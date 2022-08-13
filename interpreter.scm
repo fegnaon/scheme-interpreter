@@ -184,19 +184,19 @@
             ((boolean? (display exp)) (exit))
             ((boolean? (newline)) (exit))
             ;基本表达式
-            ((self-evaluating? exp) exp) ;
+            ((self-evaluating? exp) exp) ;ok
             ((variable? exp) (lookup-variable-value exp env)) ;ok
             ;特殊形式
             ((quoted? exp) (text-of-quotation exp)) ;ok
-            ((assignment? exp) (eval-assignment exp env)) ;(eval-assignment exp env)
+            ((assignment? exp) (eval-assignment exp env)) ;ok
             ((definition? exp) (eval-definition exp env)) ;ok
-            ((if? exp) (eval-if exp env)) ;ok eval-if exp env
+            ((if? exp) (eval-if exp env)) ;ok
             ((lambda? exp)
                 (make-procedure (lambda-parameters exp)
                                 (lambda-body exp)
                                 env))
             ((begin? exp) (eval-sequence (begin-action exp) env))
-            ((cond? exp) (eval (cond->if exp) env))
+            ((cond? exp) (eval (cond->if exp) env)) ;ok
             ;组合式
             ((application? exp)
                 (apply  (eval (operator exp) env)
