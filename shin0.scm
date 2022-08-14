@@ -1,14 +1,14 @@
-;重命名
-(define (tagged-list? exp tag)
-    (if (pair? exp)
-        (eq? (car exp) tag)
-        #f))
-
-(define (text-of-quotation exp) (cdr exp))
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;一些宏和重命名
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (text-of-quotation exp) (cadr exp))
+(define apply-in-underlying-scheme apply)
+(define (make-procedure parameters body env)
+    (list 'procedure parameters body env))
+;变量赋值
 (define (assignment-variable exp) (cadr exp))
 (define (assignment-value exp) (caddr exp))
-
+;变量定义
 (define (make-lambda parameters body) (cons 'lambda (cons parameters body)))
 (define (definition-variable exp)
     (if (symbol? (cadr exp))
@@ -18,36 +18,38 @@
     (if (symbol? (cadr exp))
         (caddr exp)
         (make-lambda (cdadr exp) (cddr exp))))
-
-(define (lambda-parameters exp) (car exp))
-(define (lambda-body) (cdr exp))
-
+;过程组成
+(define (lambda-parameters exp) (cadr exp))
+(define (lambda-body exp) (cddr exp))
+;if
 (define (if-predicate exp) (cadr exp))
 (define (if-consequent exp) (caddr exp))
 (define (if-alternative exp)
     (if (null? (cdddr exp))
         #f
         (cadddr exp)))
-
 (define (make-if predicate consequent alternative) (list 'if predicate consequent alternative))
-
+;begin
 (define (first-exp seq) (car seq))
 (define (rest-exps seq) (cdr seq))
 (define (last-exp? seq) (null? (cdr seq)))
 (define (begin-action exp) (cdr exp))
-
+;cond
 (define (cond-clause exp) (cdr exp))
 (define (cond-predicate clause) (car clause))
 (define (cond-actions clause) (cadr clause))
 (define (cond-else-clause? clause) (eq? (cond-predicate clause) 'else))
-
+;过程
 (define (operator exp) (car exp))
 (define (operands exp) (cdr exp))
 (define (first-operands exps) (car exps))
 (define (rest-operands exps) (cdr exps))
 (define (no-operands? exps) (null? exps))
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;环境
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;环境相关操作
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define (enclosing-environment env) (cdr env))
 (define (first-frame env) (car env))
 (define the-empty-environment '())
@@ -106,27 +108,32 @@
             (let ((frame (first-frame env)))
                 (scan (frame-variables frame) (frame-values frame)))))
     (env-loop env))
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;eval
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (tagged-list? exp tag)
+    (if (pair? exp)
+        (eq? (car exp) tag)
+        #f))
 ;判断
 (define (self-evaluating? exp)
     (cond   ((number? exp) #t)
             ((string? exp) #t)
             ((boolean? exp) #t)
+            ((tagged-list? exp 'procedure) #t)
             (else #f)))
 (define (variable? exp)
     (symbol? exp))
 (define (quoted? exp)(tagged-list? exp 'quote))
-(define (assignment? exp)(tagged-list? exp 'set!))
+(define (assignment? exp)(tagged-list? exp 'set))
 (define (definition? exp) (tagged-list? exp 'define))
 (define (lambda? exp)(tagged-list? exp 'lambda))
 (define (if? exp)(tagged-list? exp 'if))
 (define (begin? exp) (tagged-list? exp 'begin))
 (define (cond? exp) (tagged-list? exp 'cond))
 (define (application? exp) (pair? exp))
-;自求职表达式
-;变量
-;加引号的表达式
 ;赋值
 (define (eval-assignment exp env)
     (set-variable-value!
@@ -139,7 +146,6 @@
         (definition-variable exp)
         (eval (definition-value exp) env)
         env))
-;lambda
 ;if
 (define (eval-if exp env)
     (if (eval (if-predicate exp) env)
@@ -149,10 +155,10 @@
 (define (eval-sequence exps env)
     (cond
         ((last-exp? exps)
-            (eval (first-exp exps) env)
+            (eval (first-exp exps) env))
         (else
             (eval (first-exp exps) env)
-            (eval-sequence (rest-exps exps) env)))))
+            (eval-sequence (rest-exps exps) env))))
 ;cond
 (define (cond->if exp) (expand-clauses (cond-clause exp)))
 (define (expand-clauses clauses)
@@ -168,21 +174,15 @@
                     (cond-predicate first)
                     (cond-actions first)
                     (expand-clauses rest))))))
-
 ;组合式
 (define (list-of-value exps env)
     (if (no-operands? exps)
         '()
         (cons   (eval (first-operands exps) env)
                 (list-of-value (rest-operands exps) env))))
-
-
 ;eval
 (define (eval exp env)
     (cond
-            ;test
-            ((boolean? (display exp)) (exit))
-            ((boolean? (newline)) (exit))
             ;基本表达式
             ((self-evaluating? exp) exp) ;ok
             ((variable? exp) (lookup-variable-value exp env)) ;ok
@@ -195,7 +195,7 @@
                 (make-procedure (lambda-parameters exp)
                                 (lambda-body exp)
                                 env))
-            ((begin? exp) (eval-sequence (begin-action exp) env))
+            ((begin? exp) (eval-sequence (begin-action exp) env)) ;ok
             ((cond? exp) (eval (cond->if exp) env)) ;ok
             ;组合式
             ((application? exp)
@@ -203,21 +203,20 @@
                         (list-of-value (operands exp) env)))
             ;其他
             (else (display "Unknown expression type\n"))))
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;apply
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define (procedure-parameters p) (cadr p))
 (define (procedure-body p) (caddr p))
-(define (procedure-environment) (cadddr p))
+(define (procedure-environment p) (cadddr p))
 
-(define (compound-procedure? p)
-    (tagged-list? p 'procedure))
-
-(define (make-procedure parameters body env)
-    (list 'procedure parameters body env))
+(define (compound-procedure? p) (tagged-list? p 'procedure))
 
 (define (apply procedure arguments)
-    (cond(
-        ((primitive-procedure? procedure) (apply-primitive-procedure procedure arguments))
+    (cond
+        ((primitive-procedure? procedure) (apply-primitive-procedure procedure arguments)) ;ok
         ((compound-procedure? procedure)
             (eval-sequence
                 (procedure-body procedure)
@@ -225,9 +224,36 @@
                     (procedure-parameters procedure)
                     arguments
                     (procedure-environment procedure))))
-        (else (display "Unknown procedure type\n")))))
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;start up
+        (else (display "Unknown procedure type\n"))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;初始环境设置
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (primitive-procedure? proc) (tagged-list? proc 'primitive))
+
+(define (primitive-implementation proc) (cadr proc))
+
+(define primitive-procedures
+    (list
+        (list 'and (lambda (x y) (and x y))) (list 'or (lambda (x y) (or x y))) (list 'not not)
+        (list 'apply apply) (list 'eval eval)
+        (list 'cons cons)
+        (list 'eq (lambda (x y) (eq? x y))) (list 'equal equal?)
+        (list 'error error)
+        (list 'car car) (list 'cdr cdr) (list 'cadr cadr) (list 'cdar cdar)
+        (list 'cadar cadr) (list 'caddr cadr) (list 'cdaar cdar) (list 'cdadr cdar)
+        (list 'cadaar cadr) (list 'cadadr cadr) (list 'caddar cadr) (list 'cadddr cadr)
+        (list 'cdaaar cdar) (list 'cdaadr cdar) (list 'cdadar cdar) (list 'cdaddr cdar)
+        (list 'print print)
+        (list 'plus +) (list 'minus -)
+        (list 'exit exit)
+        ;;;
+    ))
+
+(define (primitive-procedure-names) (map car primitive-procedures))
+(define (primitive-procedure-objects) (map (lambda (proc) (list 'primitive (cadr proc))) primitive-procedures))
+
 (define (setup-environment)
     (let ((initial-env
             (extend-environment
@@ -237,27 +263,15 @@
         (define-variable! 'true #t initial-env)
         (define-variable! 'false #f initial-env)
         initial-env))
+(define the-global-environment (setup-environment))
 
-(define (primitive-procedure? proc) (tagged-list? proc 'procedure))
-
-(define (primitive-implementation proc) (cadr proc))
-
-(define primitive-procedures
-    (list
-        (list 'car car)
-        (list 'cdr cdr)
-        (list 'cons cons)
-        ;;;
-    ))
-
-(define (primitive-procedure-names) (map car primitive-procedures))
-(define (primitive-procedure-objects) (map (lambda (proc) (list 'primitive (cadr proc))) primitive-procedures))
-
-(define apply-in-underlying-scheme apply)
 (define (apply-primitive-procedure proc args)
     (apply-in-underlying-scheme (primitive-implementation proc) args))
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;driver
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define input-prompt "M-Eval input: ")
 (define output-prompt "M-Eval value: ")
 
@@ -280,11 +294,12 @@
     (if (compound-procedure? object)
         (display (list
                     'compound-procedure
-                    (procedure-parameters objects)
-                    (procedure-body objects)
+                    (procedure-parameters object)
+                    (procedure-body object)
                     "<procedure-env>"))
         (display object)))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define the-global-environment (setup-environment))
 (driver-loop)
